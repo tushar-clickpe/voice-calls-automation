@@ -138,8 +138,11 @@ async def _campaign_loop(campaign_id: int):
             # Check daily target
             daily = await db.get_or_create_daily_stats(campaign_id)
             if daily["attempted"] >= daily["target"]:
-                logger.info(f"Campaign {campaign_id} reached daily target ({daily['target']})")
-                await db.update_campaign_status(campaign_id, "completed")
+                logger.info(
+                    f"Campaign {campaign_id} reached daily target ({daily['target']}). "
+                    f"Pausing until tomorrow. Hit Resume to continue."
+                )
+                await db.update_campaign_status(campaign_id, "paused")
                 await db.release_n8n_slot(campaign_id)
                 break
 
