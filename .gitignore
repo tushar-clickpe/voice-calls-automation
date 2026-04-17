@@ -12,15 +12,11 @@ wheels/
 # Environment variables
 .env
 
-# Database
+# Database and data files
 data/*.db
 data/*.db-journal
 data/*.db-wal
-
-# Google credentials (NEVER commit this)
-credentials/
-*.json
-!package.json
+data/uploads/
 
 # OS
 .DS_Store

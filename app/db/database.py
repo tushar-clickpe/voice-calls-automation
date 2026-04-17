@@ -424,15 +424,15 @@ async def get_campaign_stats(campaign_id: int) -> dict:
     cursor = await db.execute(
         """SELECT
              COUNT(*) as total,
-             SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-             SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
-             SUM(CASE WHEN status = 'connected' THEN 1 ELSE 0 END) as connected,
-             SUM(CASE WHEN status = 'no_answer' THEN 1 ELSE 0 END) as no_answer,
-             SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-             SUM(CASE WHEN status = 'no_answer' AND attempt_count < c.max_attempts THEN 1 ELSE 0 END) as retries_pending
+             SUM(CASE WHEN contacts.status = 'pending' THEN 1 ELSE 0 END) as pending,
+             SUM(CASE WHEN contacts.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+             SUM(CASE WHEN contacts.status = 'connected' THEN 1 ELSE 0 END) as connected,
+             SUM(CASE WHEN contacts.status = 'no_answer' THEN 1 ELSE 0 END) as no_answer,
+             SUM(CASE WHEN contacts.status = 'failed' THEN 1 ELSE 0 END) as failed,
+             SUM(CASE WHEN contacts.status = 'no_answer' AND contacts.attempt_count < c.max_attempts THEN 1 ELSE 0 END) as retries_pending
            FROM contacts
            JOIN campaigns c ON c.id = contacts.campaign_id
-           WHERE campaign_id = ?""",
+           WHERE contacts.campaign_id = ?""",
         (campaign_id,),
     )
     row = await cursor.fetchone()

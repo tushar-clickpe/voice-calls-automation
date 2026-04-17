@@ -6,13 +6,13 @@
 {% block content %}
 <div class="section">
     <h2>Import New Campaign</h2>
-    <p class="text-muted">Paste a Google Sheet URL to import contacts. The original sheet will not be modified.</p>
+    <p class="text-muted">Upload a CSV or Excel file with phone numbers to create a campaign.</p>
 
     {% if error %}
     <div class="alert alert-error">{{ error }}</div>
     {% endif %}
 
-    <form method="POST" action="/campaigns/import" class="form" id="import-form">
+    <form method="POST" action="/campaigns/import" enctype="multipart/form-data" class="form" id="import-form">
         <div class="form-group">
             <label for="name">Campaign Name</label>
             <input type="text" id="name" name="name" required
@@ -20,10 +20,20 @@
         </div>
 
         <div class="form-group">
-            <label for="sheet_url">Google Sheet URL</label>
-            <input type="url" id="sheet_url" name="sheet_url" required
-                   placeholder="https://docs.google.com/spreadsheets/d/...">
-            <small class="form-help">Make sure the sheet is shared with your service account email</small>
+            <label>Upload File (.csv or .xlsx)</label>
+            <div class="file-drop-zone" id="drop-zone">
+                <input type="file" id="file-input" name="file" accept=".csv,.xlsx,.xls" required
+                       style="display: none;">
+                <div class="drop-zone-content" id="drop-zone-content">
+                    <div class="drop-icon">+</div>
+                    <p>Drag & drop your file here, or <span class="drop-link" onclick="document.getElementById('file-input').click()">browse</span></p>
+                    <small class="text-muted">Supports CSV and Excel (.xlsx) files up to 10MB</small>
+                </div>
+                <div class="drop-zone-file" id="drop-zone-file" style="display: none;">
+                    <span class="file-name" id="file-name"></span>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="clearFile()">Remove</button>
+                </div>
+            </div>
         </div>
 
         <div class="form-row">
@@ -41,14 +51,14 @@
 
         <!-- Preview section -->
         <div id="preview-section" style="display: none;">
-            <div class="section-header">
-                <h3>Sheet Preview</h3>
+            <div class="section-header" style="margin-top: 16px;">
+                <h3>File Preview</h3>
             </div>
             <div id="preview-content"></div>
         </div>
 
-        <button type="button" class="btn btn-outline" id="preview-btn" onclick="previewSheet()">
-            Preview Sheet
+        <button type="button" class="btn btn-outline" id="preview-btn" onclick="previewFile()" disabled>
+            Preview File
         </button>
 
         <hr>
@@ -77,7 +87,7 @@
         </div>
 
         <div class="form-actions">
-            <button type="submit" class="btn btn-primary btn-lg" id="import-btn">
+            <button type="submit" class="btn btn-primary btn-lg" id="import-btn" disabled>
                 Import & Create Campaign
             </button>
             <a href="/campaigns" class="btn btn-outline">Cancel</a>
@@ -88,20 +98,72 @@
 
 {% block scripts %}
 <script>
-async function previewSheet() {
-    const url = document.getElementById('sheet_url').value;
-    if (!url) {
-        alert('Please enter a Google Sheet URL first');
-        return;
-    }
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const dropContent = document.getElementById('drop-zone-content');
+const dropFile = document.getElementById('drop-zone-file');
+const fileName = document.getElementById('file-name');
+const previewBtn = document.getElementById('preview-btn');
+const importBtn = document.getElementById('import-btn');
 
-    const btn = document.getElementById('preview-btn');
+// Click to browse
+dropZone.addEventListener('click', (e) => {
+    if (e.target === dropZone || dropContent.contains(e.target)) {
+        fileInput.click();
+    }
+});
+
+// Drag & drop
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('drag-over');
+});
+
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length > 0) {
+        fileInput.files = e.dataTransfer.files;
+        onFileSelected();
+    }
+});
+
+fileInput.addEventListener('change', onFileSelected);
+
+function onFileSelected() {
+    if (fileInput.files.length > 0) {
+        const name = fileInput.files[0].name;
+        fileName.textContent = name;
+        dropContent.style.display = 'none';
+        dropFile.style.display = 'flex';
+        previewBtn.disabled = false;
+        importBtn.disabled = false;
+    }
+}
+
+function clearFile() {
+    fileInput.value = '';
+    dropContent.style.display = 'block';
+    dropFile.style.display = 'none';
+    previewBtn.disabled = true;
+    importBtn.disabled = true;
+    document.getElementById('preview-section').style.display = 'none';
+}
+
+async function previewFile() {
+    if (!fileInput.files.length) return;
+
+    const btn = previewBtn;
     btn.disabled = true;
     btn.textContent = 'Loading...';
 
     try {
         const formData = new FormData();
-        formData.append('sheet_url', url);
+        formData.append('file', fileInput.files[0]);
 
         const response = await fetch('/campaigns/preview', {
             method: 'POST',
@@ -124,7 +186,7 @@ async function previewSheet() {
                     html += '</tr>';
                 });
                 html += '</tbody></table>';
-                html += '<p class="text-success">Sheet looks good! You can proceed with import.</p>';
+                html += '<p class="text-success">File looks good! You can proceed with import.</p>';
             }
             content.innerHTML = html;
             section.style.display = 'block';
@@ -133,17 +195,16 @@ async function previewSheet() {
             section.style.display = 'block';
         }
     } catch (e) {
-        alert('Error previewing sheet: ' + e.message);
+        alert('Error previewing file: ' + e.message);
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Preview Sheet';
+        btn.textContent = 'Preview File';
     }
 }
 
 document.getElementById('import-form').addEventListener('submit', function() {
-    const btn = document.getElementById('import-btn');
-    btn.disabled = true;
-    btn.textContent = 'Importing... (this may take a moment)';
+    importBtn.disabled = true;
+    importBtn.textContent = 'Importing... (this may take a moment)';
 });
 </script>
 {% endblock %}

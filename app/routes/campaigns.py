@@ -1,13 +1,12 @@
-"""Campaign routes - CRUD, import from Google Sheets, start/pause/stop."""
+"""Campaign routes - CRUD, import from file upload, start/pause/stop."""
 
-import asyncio
 import logging
-from fastapi import APIRouter, Request, Form, HTTPException
+from fastapi import APIRouter, Request, Form, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.db import database as db
-from app.services import sheets, batch_engine
-from app.config import DEFAULT_BATCH_SIZE, DEFAULT_MAX_ATTEMPTS, DEFAULT_DAILY_TARGET
+from app.services import file_parser, batch_engine
+from app.config import DEFAULT_BATCH_SIZE, DEFAULT_MAX_ATTEMPTS, DEFAULT_DAILY_TARGET, MAX_UPLOAD_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,6 @@ async def list_campaigns(request: Request):
     """List all campaigns."""
     campaigns = await db.get_all_campaigns()
 
-    # Enrich with stats and running status
     enriched = []
     for c in campaigns:
         stats = await db.get_campaign_stats(c["id"])
@@ -46,27 +44,30 @@ async def new_campaign_form(request: Request):
 
 
 @router.post("/campaigns/preview")
-async def preview_sheet(request: Request):
-    """Preview Google Sheet columns and first few rows."""
-    form = await request.form()
-    sheet_url = form.get("sheet_url", "").strip()
-
-    if not sheet_url:
-        raise HTTPException(400, "Sheet URL is required")
+async def preview_file(file: UploadFile = File(...)):
+    """Preview uploaded file columns and first few rows."""
+    if not file.filename:
+        return {"success": False, "error": "No file selected"}
 
     try:
-        headers = sheets.get_sheet_headers(sheet_url)
-        preview = sheets.get_sheet_preview(sheet_url, rows=5)
+        content = await file.read()
+        if len(content) > MAX_UPLOAD_SIZE:
+            return {"success": False, "error": "File too large. Max 10MB."}
+
+        headers, preview = file_parser.get_file_preview(content, file.filename, rows=5)
+        clean_preview = []
+        for row in preview:
+            clean_preview.append({k: str(v) if v is not None else "" for k, v in row.items()})
+
         return {
             "success": True,
             "headers": headers,
-            "preview": preview,
-            "row_count": len(preview),
+            "preview": clean_preview,
+            "row_count": len(clean_preview),
+            "filename": file.filename,
         }
-    except FileNotFoundError as e:
-        return {"success": False, "error": str(e)}
     except Exception as e:
-        logger.error(f"Sheet preview error: {e}")
+        logger.error(f"File preview error: {e}")
         return {"success": False, "error": str(e)}
 
 
@@ -74,60 +75,66 @@ async def preview_sheet(request: Request):
 async def import_campaign(
     request: Request,
     name: str = Form(...),
-    sheet_url: str = Form(...),
-    phone_column: str = Form(None),
-    name_column: str = Form(None),
+    file: UploadFile = File(...),
+    phone_column: str = Form(""),
+    name_column: str = Form(""),
     batch_size: int = Form(DEFAULT_BATCH_SIZE),
     max_attempts: int = Form(DEFAULT_MAX_ATTEMPTS),
     daily_target: int = Form(DEFAULT_DAILY_TARGET),
 ):
-    """Import contacts from Google Sheet and create a campaign."""
+    """Import contacts from uploaded CSV/XLSX file and create a campaign."""
+    error_context = {
+        "default_batch_size": batch_size,
+        "default_max_attempts": max_attempts,
+        "default_daily_target": daily_target,
+    }
+
+    if not file.filename:
+        error_context["error"] = "No file selected. Please upload a CSV or XLSX file."
+        return _render(request, "import.html", error_context)
+
     try:
-        # Read contacts from sheet
-        contacts = sheets.read_sheet(
-            sheet_url,
-            phone_column=phone_column if phone_column else None,
-            name_column=name_column if name_column else None,
+        content = await file.read()
+        if len(content) > MAX_UPLOAD_SIZE:
+            error_context["error"] = "File too large. Maximum size is 10MB."
+            return _render(request, "import.html", error_context)
+
+        contacts = file_parser.parse_uploaded_file(
+            content,
+            file.filename,
+            phone_column=phone_column if phone_column.strip() else None,
+            name_column=name_column if name_column.strip() else None,
         )
 
         if not contacts:
-            return _render(request, "import.html", {
-                "error": "No contacts found in the sheet. Check that the sheet has data and the phone column is detectable.",
-                "default_batch_size": batch_size,
-                "default_max_attempts": max_attempts,
-                "default_daily_target": daily_target,
-            })
+            error_context["error"] = (
+                "No contacts found in the file. Check that the file has data rows "
+                "and a column with phone numbers."
+            )
+            return _render(request, "import.html", error_context)
 
-        # Create campaign
         campaign = await db.create_campaign(
             name=name,
-            sheet_url=sheet_url,
+            sheet_url=file.filename,  # Store original filename as reference
             batch_size=batch_size,
             max_attempts=max_attempts,
             daily_target=daily_target,
         )
 
-        # Bulk insert contacts
         inserted = await db.bulk_insert_contacts(campaign["id"], contacts)
 
-        logger.info(f"Campaign '{name}' created with {inserted} contacts from sheet")
+        logger.info(
+            f"Campaign '{name}' created with {inserted} contacts from {file.filename}"
+        )
         return RedirectResponse(f"/campaigns/{campaign['id']}", status_code=303)
 
-    except FileNotFoundError as e:
-        return _render(request, "import.html", {
-            "error": str(e),
-            "default_batch_size": batch_size,
-            "default_max_attempts": max_attempts,
-            "default_daily_target": daily_target,
-        })
+    except ValueError as e:
+        error_context["error"] = str(e)
+        return _render(request, "import.html", error_context)
     except Exception as e:
         logger.error(f"Import error: {e}", exc_info=True)
-        return _render(request, "import.html", {
-            "error": f"Failed to import: {str(e)}",
-            "default_batch_size": batch_size,
-            "default_max_attempts": max_attempts,
-            "default_daily_target": daily_target,
-        })
+        error_context["error"] = f"Failed to import: {str(e)}"
+        return _render(request, "import.html", error_context)
 
 
 @router.get("/campaigns/{campaign_id}", response_class=HTMLResponse)
@@ -143,7 +150,6 @@ async def campaign_detail(request: Request, campaign_id: int):
     recent = await db.get_recent_activity(campaign_id, limit=30)
     is_running = batch_engine.is_campaign_running(campaign_id)
 
-    # Get contacts with pagination
     status_filter = request.query_params.get("status", None)
     page = int(request.query_params.get("page", 1))
     per_page = 50
@@ -167,7 +173,6 @@ async def campaign_detail(request: Request, campaign_id: int):
 
 @router.post("/campaigns/{campaign_id}/start")
 async def start_campaign(campaign_id: int):
-    """Start or resume a campaign."""
     result = await batch_engine.start_campaign(campaign_id)
     if not result["success"]:
         raise HTTPException(400, result["error"])
@@ -176,7 +181,6 @@ async def start_campaign(campaign_id: int):
 
 @router.post("/campaigns/{campaign_id}/pause")
 async def pause_campaign(campaign_id: int):
-    """Pause a campaign."""
     result = await batch_engine.pause_campaign(campaign_id)
     if not result["success"]:
         raise HTTPException(400, result["error"])
@@ -185,7 +189,6 @@ async def pause_campaign(campaign_id: int):
 
 @router.post("/campaigns/{campaign_id}/stop")
 async def stop_campaign(campaign_id: int):
-    """Stop a campaign completely."""
     result = await batch_engine.stop_campaign(campaign_id)
     if not result["success"]:
         raise HTTPException(400, result["error"])
@@ -194,12 +197,10 @@ async def stop_campaign(campaign_id: int):
 
 @router.delete("/campaigns/{campaign_id}")
 async def delete_campaign(campaign_id: int):
-    """Delete a campaign and all its data."""
     campaign = await db.get_campaign(campaign_id)
     if not campaign:
         raise HTTPException(404, "Campaign not found")
 
-    # Stop if running
     if batch_engine.is_campaign_running(campaign_id):
         await batch_engine.stop_campaign(campaign_id)
 

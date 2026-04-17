@@ -480,6 +480,55 @@ hr {
     color: var(--text-muted);
 }
 
+/* File Drop Zone */
+.file-drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.file-drop-zone:hover {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.05);
+}
+
+.file-drop-zone.drag-over {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.drop-zone-content .drop-icon {
+    font-size: 32px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.drop-zone-content p {
+    margin-bottom: 4px;
+}
+
+.drop-link {
+    color: var(--primary);
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.drop-zone-file {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.drop-zone-file .file-name {
+    font-weight: 600;
+    color: var(--success);
+    font-size: 16px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .container { padding: 16px; }

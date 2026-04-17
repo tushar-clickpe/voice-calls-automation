@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.config import APP_HOST, APP_PORT
+from app.config import APP_HOST, APP_PORT, UPLOADS_DIR
 from app.db.database import init_db, close_db
 from app.routes import dashboard, campaigns, webhooks
 
@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Campaign Manager...")
     await init_db()
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     logger.info("Database initialized")
     yield
     # Shutdown

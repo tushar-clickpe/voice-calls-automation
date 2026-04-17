@@ -4,7 +4,7 @@ Marketing campaign manager with auto-batching, retry logic, and n8n integration.
 
 ## What It Does
 
-- **Import** contacts from Google Sheets (read-only, original sheet untouched)
+- **Import** contacts from CSV or Excel files (drag & drop upload)
 - **Auto-batch** contacts and send to n8n for processing (calls + WhatsApp)
 - **Auto-retry** contacts that didn't pick up (configurable max attempts)
 - **Run multiple campaigns** in parallel (up to 3 concurrent)
@@ -21,22 +21,7 @@ cd campaign-manager
 uv sync
 ```
 
-### 2. Set Up Google Sheets API (Free)
-
-You need a Google Service Account to read sheets. This is free:
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project (or use existing)
-3. Go to **APIs & Services** → **Enable APIs** → Enable **Google Sheets API** and **Google Drive API**
-4. Go to **APIs & Services** → **Credentials** → **Create Credentials** → **Service Account**
-5. Give it a name (e.g., "campaign-manager")
-6. Click on the service account → **Keys** → **Add Key** → **Create new key** → **JSON**
-7. Download the JSON file
-8. Place it at `credentials/service-account.json` in the project
-
-**Important**: When your manager gives you a Google Sheet, you need to **share it** with the service account email (found in the JSON file, looks like `campaign-manager@your-project.iam.gserviceaccount.com`). Share with "Viewer" permission — the app only reads, never writes.
-
-### 3. Configure Environment
+### 2. Configure Environment
 
 ```bash
 cp .env.example .env
@@ -45,8 +30,7 @@ cp .env.example .env
 Edit `.env` with your settings:
 
 ```bash
-# Required
-GOOGLE_SERVICE_ACCOUNT_FILE=credentials/service-account.json
+# Required - your n8n webhook URLs
 N8N_WEBHOOK_URL_1=https://your-n8n.com/webhook/campaign-slot-1
 N8N_WEBHOOK_URL_2=https://your-n8n.com/webhook/campaign-slot-2
 N8N_WEBHOOK_URL_3=https://your-n8n.com/webhook/campaign-slot-3
@@ -59,11 +43,11 @@ DEFAULT_MAX_ATTEMPTS=2
 DEFAULT_DAILY_TARGET=400
 ```
 
-### 4. Set Up n8n Workflows
+### 3. Set Up n8n Workflows
 
 See **[N8N_SETUP.md](N8N_SETUP.md)** for step-by-step instructions on modifying your n8n workflows.
 
-### 5. Run
+### 4. Run
 
 ```bash
 uv run python -m app.main
@@ -75,12 +59,12 @@ The app will be available at `http://your-server-ip:8000`
 
 ### Daily Workflow
 
-1. Manager sends you a Google Sheet link
-2. Share the sheet with your service account email (Viewer access)
-3. Open dashboard → **+ Import New Campaign**
-4. Paste sheet URL, set campaign name, batch size, daily target
-5. Click **Import** → contacts are loaded
-6. Click **Start** → batches are sent to n8n automatically
+1. Manager gives you a Google Sheet / Excel file with phone numbers
+2. Download it as CSV or XLSX (File > Download > .csv or .xlsx)
+3. Open dashboard -> **+ New Campaign**
+4. Give it a name, drag & drop the file, set batch size and daily target
+5. Click **Import** -> contacts are loaded
+6. Click **Start** -> batches are sent to n8n automatically
 7. Watch progress on the dashboard
 8. App stops when daily target is reached or all contacts are processed
 
@@ -108,16 +92,15 @@ campaign-manager/
 │   │   └── database.py      # All database operations
 │   ├── routes/
 │   │   ├── dashboard.py     # Dashboard + stats API
-│   │   ├── campaigns.py     # Campaign CRUD + import
+│   │   ├── campaigns.py     # Campaign CRUD + file upload import
 │   │   └── webhooks.py      # n8n result callbacks
 │   ├── services/
-│   │   ├── sheets.py        # Google Sheets reader
+│   │   ├── file_parser.py   # CSV/XLSX file parser
 │   │   ├── batch_engine.py  # Auto-batching + retry orchestrator
 │   │   └── n8n_trigger.py   # Sends batches to n8n
 │   ├── templates/           # Jinja2 HTML templates
 │   └── static/              # CSS + JS
 ├── data/                    # SQLite database (auto-created)
-├── credentials/             # Google service account JSON (gitignored)
 ├── .env                     # Your configuration (gitignored)
 ├── .env.example             # Configuration template
 ├── N8N_SETUP.md             # n8n workflow modification guide
@@ -129,11 +112,12 @@ campaign-manager/
 ### Pages (HTML)
 - `GET /` — Dashboard
 - `GET /campaigns` — Campaign list
-- `GET /campaigns/new` — Import form
+- `GET /campaigns/new` — Import form (file upload)
 - `GET /campaigns/:id` — Campaign detail
 
 ### API (JSON)
-- `POST /campaigns/import` — Import from Google Sheet
+- `POST /campaigns/import` — Import from uploaded CSV/XLSX
+- `POST /campaigns/preview` — Preview uploaded file
 - `POST /campaigns/:id/start` — Start campaign
 - `POST /campaigns/:id/pause` — Pause campaign
 - `POST /campaigns/:id/stop` — Stop campaign
@@ -175,11 +159,11 @@ sudo systemctl start campaign-manager
 
 ## Troubleshooting
 
-**"Google service account file not found"**
-→ Make sure `credentials/service-account.json` exists. See step 2 above.
+**"Unsupported file format"**
+→ The app supports `.csv` and `.xlsx` files. Download your Google Sheet as one of these formats.
 
 **"Could not auto-detect phone column"**
-→ Your sheet's column headers don't match common patterns. Specify the phone column name explicitly when importing.
+→ Your file's column headers don't match common patterns (phone, mobile, number, etc.). Specify the phone column name explicitly when importing.
 
 **"All n8n workflow slots are in use"**
 → You already have 3 campaigns running. Stop or pause one first.
@@ -187,5 +171,5 @@ sudo systemctl start campaign-manager
 **"n8n returned error"**
 → Check that your n8n webhook URLs in `.env` are correct and the n8n workflows are active.
 
-**"No contacts found in the sheet"**
-→ Make sure the sheet is shared with the service account email and has data rows below the header row.
+**"No contacts found in the file"**
+→ Make sure the file has data rows below the header row and contains valid phone numbers.
