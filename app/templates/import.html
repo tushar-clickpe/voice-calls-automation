@@ -1,0 +1,149 @@
+{% extends "layout.html" %}
+{% set active_page = "campaigns" %}
+
+{% block title %}Import Campaign - Campaign Manager{% endblock %}
+
+{% block content %}
+<div class="section">
+    <h2>Import New Campaign</h2>
+    <p class="text-muted">Paste a Google Sheet URL to import contacts. The original sheet will not be modified.</p>
+
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/campaigns/import" class="form" id="import-form">
+        <div class="form-group">
+            <label for="name">Campaign Name</label>
+            <input type="text" id="name" name="name" required
+                   placeholder="e.g. North Region - April Week 3">
+        </div>
+
+        <div class="form-group">
+            <label for="sheet_url">Google Sheet URL</label>
+            <input type="url" id="sheet_url" name="sheet_url" required
+                   placeholder="https://docs.google.com/spreadsheets/d/...">
+            <small class="form-help">Make sure the sheet is shared with your service account email</small>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="phone_column">Phone Column Name <small>(optional)</small></label>
+                <input type="text" id="phone_column" name="phone_column"
+                       placeholder="Auto-detect (looks for 'phone', 'mobile', etc.)">
+            </div>
+            <div class="form-group">
+                <label for="name_column">Name Column <small>(optional)</small></label>
+                <input type="text" id="name_column" name="name_column"
+                       placeholder="Auto-detect (looks for 'name', 'customer', etc.)">
+            </div>
+        </div>
+
+        <!-- Preview section -->
+        <div id="preview-section" style="display: none;">
+            <div class="section-header">
+                <h3>Sheet Preview</h3>
+            </div>
+            <div id="preview-content"></div>
+        </div>
+
+        <button type="button" class="btn btn-outline" id="preview-btn" onclick="previewSheet()">
+            Preview Sheet
+        </button>
+
+        <hr>
+
+        <h3>Campaign Settings</h3>
+
+        <div class="form-row form-row-3">
+            <div class="form-group">
+                <label for="batch_size">Batch Size</label>
+                <input type="number" id="batch_size" name="batch_size"
+                       value="{{ default_batch_size }}" min="10" max="500">
+                <small class="form-help">Contacts per batch sent to n8n</small>
+            </div>
+            <div class="form-group">
+                <label for="max_attempts">Max Attempts</label>
+                <input type="number" id="max_attempts" name="max_attempts"
+                       value="{{ default_max_attempts }}" min="1" max="5">
+                <small class="form-help">Retry no-answer contacts up to this many times</small>
+            </div>
+            <div class="form-group">
+                <label for="daily_target">Daily Target</label>
+                <input type="number" id="daily_target" name="daily_target"
+                       value="{{ default_daily_target }}" min="10" max="5000">
+                <small class="form-help">Stop after this many attempts per day</small>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-lg" id="import-btn">
+                Import & Create Campaign
+            </button>
+            <a href="/campaigns" class="btn btn-outline">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function previewSheet() {
+    const url = document.getElementById('sheet_url').value;
+    if (!url) {
+        alert('Please enter a Google Sheet URL first');
+        return;
+    }
+
+    const btn = document.getElementById('preview-btn');
+    btn.disabled = true;
+    btn.textContent = 'Loading...';
+
+    try {
+        const formData = new FormData();
+        formData.append('sheet_url', url);
+
+        const response = await fetch('/campaigns/preview', {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await response.json();
+
+        const section = document.getElementById('preview-section');
+        const content = document.getElementById('preview-content');
+
+        if (data.success) {
+            let html = '<p>Columns found: <strong>' + data.headers.join(', ') + '</strong></p>';
+            if (data.preview.length > 0) {
+                html += '<table class="table table-sm"><thead><tr>';
+                data.headers.forEach(h => html += '<th>' + h + '</th>');
+                html += '</tr></thead><tbody>';
+                data.preview.forEach(row => {
+                    html += '<tr>';
+                    data.headers.forEach(h => html += '<td>' + (row[h] || '') + '</td>');
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                html += '<p class="text-success">Sheet looks good! You can proceed with import.</p>';
+            }
+            content.innerHTML = html;
+            section.style.display = 'block';
+        } else {
+            content.innerHTML = '<div class="alert alert-error">' + data.error + '</div>';
+            section.style.display = 'block';
+        }
+    } catch (e) {
+        alert('Error previewing sheet: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Preview Sheet';
+    }
+}
+
+document.getElementById('import-form').addEventListener('submit', function() {
+    const btn = document.getElementById('import-btn');
+    btn.disabled = true;
+    btn.textContent = 'Importing... (this may take a moment)';
+});
+</script>
+{% endblock %}

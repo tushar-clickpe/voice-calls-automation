@@ -1,0 +1,157 @@
+{% extends "layout.html" %}
+{% set active_page = "dashboard" %}
+
+{% block title %}Dashboard - Campaign Manager{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <!-- Global Stats -->
+    <div class="section">
+        <div class="section-header">
+            <h2>Today's Progress</h2>
+            <span class="date-label">{{ today }}</span>
+        </div>
+
+        <div class="stats-bar" id="global-stats">
+            <div class="progress-container">
+                {% set pct = (global_stats.attempted / global_stats.target * 100) if global_stats.target > 0 else 0 %}
+                <div class="progress-info">
+                    <span>Target: <strong id="gs-target">{{ global_stats.target }}</strong></span>
+                    <span>Attempted: <strong id="gs-attempted">{{ global_stats.attempted }}</strong></span>
+                    <span>Connected: <strong class="text-success" id="gs-connected">{{ global_stats.connected }}</strong></span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="gs-progress" style="width: {{ pct | round(1) }}%"></div>
+                </div>
+                <div class="progress-info">
+                    <span id="gs-pct">{{ pct | round(1) }}%</span>
+                    <span>No Answer: <strong class="text-warning" id="gs-no-answer">{{ global_stats.no_answer }}</strong></span>
+                    <span>Failed: <strong class="text-danger" id="gs-failed">{{ global_stats.failed }}</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Campaigns -->
+    <div class="section">
+        <div class="section-header">
+            <h2>Campaigns</h2>
+            <a href="/campaigns/new" class="btn btn-sm btn-primary">+ Import New</a>
+        </div>
+
+        {% if campaigns %}
+        <div class="campaign-cards" id="campaign-cards">
+            {% for c in campaigns %}
+            <div class="campaign-card {{ 'running' if c.is_running else '' }}" data-campaign-id="{{ c.id }}">
+                <div class="campaign-card-header">
+                    <a href="/campaigns/{{ c.id }}" class="campaign-name">{{ c.name }}</a>
+                    <span class="status-badge status-{{ c.status }}">{{ c.status }}</span>
+                </div>
+
+                <div class="campaign-card-stats">
+                    <div class="stat">
+                        <span class="stat-value">{{ c.stats.total or 0 }}</span>
+                        <span class="stat-label">Total</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value text-success">{{ c.stats.connected or 0 }}</span>
+                        <span class="stat-label">Connected</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value text-warning">{{ c.stats.no_answer or 0 }}</span>
+                        <span class="stat-label">No Answer</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">{{ c.stats.pending or 0 }}</span>
+                        <span class="stat-label">Pending</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value text-info">{{ c.stats.retries_pending or 0 }}</span>
+                        <span class="stat-label">Retries</span>
+                    </div>
+                </div>
+
+                {% if c.running_batch %}
+                <div class="batch-indicator">
+                    Batch #{{ c.running_batch.batch_number }} running
+                    ({{ c.running_batch.connected_count + c.running_batch.no_answer_count + c.running_batch.failed_count }}/{{ c.running_batch.size }} done)
+                </div>
+                {% endif %}
+
+                <div class="campaign-card-actions">
+                    {% if c.status == 'active' and c.is_running %}
+                        <button class="btn btn-sm btn-warning" onclick="campaignAction({{ c.id }}, 'pause')">Pause</button>
+                        <button class="btn btn-sm btn-danger" onclick="campaignAction({{ c.id }}, 'stop')">Stop</button>
+                    {% elif c.status == 'active' or c.status == 'paused' %}
+                        <button class="btn btn-sm btn-success" onclick="campaignAction({{ c.id }}, 'start')">
+                            {{ 'Resume' if c.status == 'paused' else 'Start' }}
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="campaignAction({{ c.id }}, 'stop')">Stop</button>
+                    {% elif c.status == 'stopped' %}
+                        <span class="text-muted">Stopped</span>
+                    {% elif c.status == 'completed' %}
+                        <span class="text-success">Completed</span>
+                    {% endif %}
+                    <a href="/campaigns/{{ c.id }}" class="btn btn-sm btn-outline">Details</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No campaigns yet. Import a Google Sheet to get started.</p>
+            <a href="/campaigns/new" class="btn btn-primary">+ Import Campaign</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="section">
+        <div class="section-header">
+            <h2>Recent Activity</h2>
+        </div>
+
+        <div class="activity-list" id="activity-list">
+            {% if recent_activity %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Phone</th>
+                        <th>Name</th>
+                        <th>Call Status</th>
+                        <th>WhatsApp</th>
+                        <th>Attempt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in recent_activity %}
+                    <tr>
+                        <td>{{ a.created_at }}</td>
+                        <td class="font-mono">{{ a.phone }}</td>
+                        <td>{{ a.contact_name or '-' }}</td>
+                        <td>
+                            <span class="status-badge status-{{ a.contact_status }}">
+                                {{ a.call_status or a.contact_status }}
+                            </span>
+                        </td>
+                        <td>{{ a.whatsapp_status or '-' }}</td>
+                        <td>{{ a.attempt_number }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-muted">No activity yet. Start a campaign to see results here.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Auto-refresh dashboard every 5 seconds
+    startDashboardPolling();
+</script>
+{% endblock %}

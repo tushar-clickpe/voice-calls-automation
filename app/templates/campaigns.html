@@ -1,0 +1,68 @@
+{% extends "layout.html" %}
+{% set active_page = "campaigns" %}
+
+{% block title %}Campaigns - Campaign Manager{% endblock %}
+
+{% block content %}
+<div class="section">
+    <div class="section-header">
+        <h2>All Campaigns</h2>
+        <a href="/campaigns/new" class="btn btn-sm btn-primary">+ Import New</a>
+    </div>
+
+    {% if campaigns %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Total</th>
+                <th>Connected</th>
+                <th>No Answer</th>
+                <th>Pending</th>
+                <th>Retries</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in campaigns %}
+            <tr>
+                <td><a href="/campaigns/{{ c.id }}">{{ c.name }}</a></td>
+                <td>
+                    <span class="status-badge status-{{ c.status }}">
+                        {{ c.status }}
+                        {% if c.is_running %} (running){% endif %}
+                    </span>
+                </td>
+                <td>{{ c.stats.total or 0 }}</td>
+                <td class="text-success">{{ c.stats.connected or 0 }}</td>
+                <td class="text-warning">{{ c.stats.no_answer or 0 }}</td>
+                <td>{{ c.stats.pending or 0 }}</td>
+                <td class="text-info">{{ c.stats.retries_pending or 0 }}</td>
+                <td>{{ c.created_at }}</td>
+                <td>
+                    {% if c.status in ('active', 'paused') %}
+                        {% if c.is_running %}
+                            <button class="btn btn-xs btn-warning" onclick="campaignAction({{ c.id }}, 'pause')">Pause</button>
+                        {% else %}
+                            <button class="btn btn-xs btn-success" onclick="campaignAction({{ c.id }}, 'start')">Start</button>
+                        {% endif %}
+                    {% endif %}
+                    <a href="/campaigns/{{ c.id }}" class="btn btn-xs btn-outline">View</a>
+                    {% if c.status in ('stopped', 'completed') %}
+                        <button class="btn btn-xs btn-danger" onclick="deleteCampaign({{ c.id }})">Delete</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>No campaigns yet.</p>
+        <a href="/campaigns/new" class="btn btn-primary">+ Import Your First Campaign</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
