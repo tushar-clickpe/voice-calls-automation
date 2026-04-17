@@ -23,7 +23,17 @@
                     <button class="btn btn-warning" onclick="campaignAction({{ campaign.id }}, 'pause')">Pause</button>
                     <button class="btn btn-danger" onclick="campaignAction({{ campaign.id }}, 'stop')">Stop</button>
                 {% elif campaign.status in ('active', 'paused') %}
-                    <button class="btn btn-success" onclick="campaignAction({{ campaign.id }}, 'start')">
+                    <select id="slot-select" class="slot-select">
+                        <option value="">Auto-assign slot</option>
+                        {% for s in n8n_slots %}
+                        <option value="{{ s.slot }}"
+                            {% if not s.available %}disabled{% endif %}
+                            {% if s.is_current %}selected{% endif %}>
+                            Slot {{ s.slot }}{% if s.in_use_by %} (used by {{ s.in_use_by }}){% endif %}{% if s.is_current %} (current){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-success" onclick="startWithSlot({{ campaign.id }})">
                         {{ 'Resume' if campaign.status == 'paused' else 'Start' }}
                     </button>
                     <button class="btn btn-danger" onclick="campaignAction({{ campaign.id }}, 'stop')">Stop</button>
@@ -226,8 +236,29 @@
 
 {% block scripts %}
 <script>
-    // Poll for updates on this campaign
     const campaignId = {{ campaign.id }};
     startCampaignPolling(campaignId);
+
+    async function startWithSlot(campaignId) {
+        const select = document.getElementById('slot-select');
+        const slot = select ? select.value : '';
+
+        try {
+            const body = slot ? { slot: parseInt(slot) } : {};
+            const response = await fetch(`/campaigns/${campaignId}/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                window.location.reload();
+            } else {
+                alert('Error: ' + (data.detail || data.error || 'Unknown error'));
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
 </script>
 {% endblock %}

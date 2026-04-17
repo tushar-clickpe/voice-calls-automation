@@ -6,7 +6,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.db import database as db
 from app.services import file_parser, batch_engine
-from app.config import DEFAULT_BATCH_SIZE, DEFAULT_MAX_ATTEMPTS, DEFAULT_DAILY_TARGET, MAX_UPLOAD_SIZE
+from app.config import (
+    DEFAULT_BATCH_SIZE, DEFAULT_MAX_ATTEMPTS, DEFAULT_DAILY_TARGET,
+    MAX_UPLOAD_SIZE, N8N_WEBHOOK_URLS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +160,26 @@ async def campaign_detail(request: Request, campaign_id: int):
         campaign_id, status=status_filter, limit=per_page, offset=(page - 1) * per_page
     )
 
+    # Get available n8n slots for the dropdown
+    used_slots = await db.get_used_n8n_slots()
+    n8n_slots = []
+    for slot_num, url in N8N_WEBHOOK_URLS.items():
+        if url:  # Only show slots that have a URL configured
+            in_use_by = None
+            if slot_num in used_slots:
+                # Find which campaign is using it
+                for other_c in await db.get_active_campaigns():
+                    if other_c.get("n8n_slot") == slot_num and other_c["id"] != campaign_id:
+                        in_use_by = other_c["name"]
+                        break
+            n8n_slots.append({
+                "slot": slot_num,
+                "url": url,
+                "available": slot_num not in used_slots or campaign.get("n8n_slot") == slot_num,
+                "in_use_by": in_use_by,
+                "is_current": campaign.get("n8n_slot") == slot_num,
+            })
+
     return _render(request, "campaign_detail.html", {
         "campaign": campaign,
         "stats": stats,
@@ -168,12 +191,22 @@ async def campaign_detail(request: Request, campaign_id: int):
         "status_filter": status_filter,
         "page": page,
         "per_page": per_page,
+        "n8n_slots": n8n_slots,
     })
 
 
 @router.post("/campaigns/{campaign_id}/start")
-async def start_campaign(campaign_id: int):
-    result = await batch_engine.start_campaign(campaign_id)
+async def start_campaign(request: Request, campaign_id: int):
+    # Accept slot from JSON body or query param
+    slot = None
+    try:
+        body = await request.json()
+        slot = body.get("slot")
+    except Exception:
+        pass
+    if slot is not None:
+        slot = int(slot)
+    result = await batch_engine.start_campaign(campaign_id, preferred_slot=slot)
     if not result["success"]:
         raise HTTPException(400, result["error"])
     return result

@@ -6,6 +6,7 @@ from typing import Optional
 
 from app.db import database as db
 from app.services.n8n_trigger import send_batch_to_n8n, get_available_slot
+from app.config import N8N_WEBHOOK_URLS
 
 logger = logging.getLogger(__name__)
 
@@ -13,10 +14,13 @@ logger = logging.getLogger(__name__)
 _running_tasks: dict[int, asyncio.Task] = {}
 
 
-async def start_campaign(campaign_id: int) -> dict:
+async def start_campaign(campaign_id: int, preferred_slot: int = None) -> dict:
     """Start or resume processing a campaign.
 
-    Assigns an n8n slot and begins dispatching batches.
+    Args:
+        campaign_id: Campaign to start
+        preferred_slot: Specific n8n slot (1, 2, or 3) to use. If None, auto-assigns.
+
     Returns status dict.
     """
     campaign = await db.get_campaign(campaign_id)
@@ -40,17 +44,27 @@ async def start_campaign(campaign_id: int) -> dict:
 
     # Assign n8n slot
     used_slots = await db.get_used_n8n_slots()
-    slot = campaign.get("n8n_slot")
 
-    if not slot or slot in used_slots:
-        # Need a new slot
-        slot = get_available_slot(used_slots)
-        if slot is None:
-            return {
-                "success": False,
-                "error": "All n8n workflow slots are in use. Stop another campaign first or wait for it to finish.",
-            }
+    if preferred_slot:
+        # User chose a specific slot
+        webhook_url = N8N_WEBHOOK_URLS.get(preferred_slot, "")
+        if not webhook_url:
+            return {"success": False, "error": f"Slot {preferred_slot} has no webhook URL configured in .env"}
+        if preferred_slot in used_slots:
+            return {"success": False, "error": f"Slot {preferred_slot} is already in use by another campaign"}
+        slot = preferred_slot
         await db.assign_n8n_slot(campaign_id, slot)
+    else:
+        # Auto-assign
+        slot = campaign.get("n8n_slot")
+        if not slot or slot in used_slots:
+            slot = get_available_slot(used_slots)
+            if slot is None:
+                return {
+                    "success": False,
+                    "error": "All n8n workflow slots are in use. Stop another campaign first or wait for it to finish.",
+                }
+            await db.assign_n8n_slot(campaign_id, slot)
 
     # Mark active
     await db.update_campaign_status(campaign_id, "active")

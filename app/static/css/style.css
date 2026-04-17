@@ -138,7 +138,27 @@ body {
 .btn-outline { background: transparent; }
 .btn-outline:hover { background: var(--bg-hover); }
 
-.btn-group { display: flex; gap: 8px; }
+.btn-group { display: flex; gap: 8px; align-items: center; }
+
+/* Slot Selector */
+.slot-select {
+    padding: 6px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.slot-select:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.slot-select option:disabled {
+    color: var(--text-muted);
+}
 
 /* Status Badges */
 .status-badge {
