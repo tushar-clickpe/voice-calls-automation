@@ -1,6 +1,7 @@
 """Campaign Manager - Main Application Entry Point"""
 
 import logging
+import os
 import uvicorn
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -68,11 +69,12 @@ app = create_app()
 
 def run():
     """Run the application with uvicorn."""
+    is_dev = os.getenv("ENV", "production") == "development"
     uvicorn.run(
         "app.main:app",
         host=APP_HOST,
         port=APP_PORT,
-        reload=True,
+        reload=is_dev,
         log_level="info",
     )
 

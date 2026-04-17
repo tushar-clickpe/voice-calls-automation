@@ -1,0 +1,12 @@
+__pycache__
+*.py[oc]
+.venv
+.git
+.gitignore
+.idea
+.vscode
+*.md
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/uploads/*
